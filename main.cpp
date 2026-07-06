@@ -1,7 +1,9 @@
 #include <iostream>
 
+#include "header/Historia.h"
 #include "header/Player.h"
 #include "header/Monster.h"
+
 using namespace std;
 
 void batalha(Player* player, Monster* monster);
@@ -9,9 +11,10 @@ void batalha(Player* player, Monster* monster);
 int main()
 {
     srand(time(0));
-    cout << "=====[ RPG - warrior's mission ]=====\n" << endl;
-    Player heroi("Heroi");
+    cout << "=====[ RPG - warrior's mission ]=====" << endl;
+    intro();
 
+    Player heroi("Heroi");
     Monster* monstro = new Monster("Rei Monstro", 1000, 60);
 
     batalha(&heroi, monstro);
