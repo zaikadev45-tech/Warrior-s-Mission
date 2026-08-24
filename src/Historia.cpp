@@ -18,7 +18,7 @@ bool skip() {
             exe = false;
             break;
         } else {
-            cout << "Invalido";
+            cout << "Invalido" << endl;
             continue;
         }
     }

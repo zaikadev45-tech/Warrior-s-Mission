@@ -6,6 +6,7 @@
 class Player : public Personagem {
 public:
     Player(string nome);
+    void escolha(Personagem* inimigo);
     void attack_fisic(Personagem* inimigo) override;
 };
 
