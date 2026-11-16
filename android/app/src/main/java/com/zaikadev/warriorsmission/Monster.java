@@ -1,10 +1,17 @@
 package com.zaikadev.warriorsmission;
 
-/** Porte de Monster.h / Monster.cpp (C++) */
+/** Monstro numa batalha (porte de Monster.h / Monster.cpp). */
 public class Monster extends Personagem {
-    public Monster(String nome, int hp, int power) {
-        super(nome, hp, 0);
-        this.power = power;
+    private final Especie especie;
+
+    public Monster(Especie especie) {
+        super(especie.nome, especie.hp, 0);
+        this.power = especie.power;
+        this.especie = especie;
+    }
+
+    public Especie getEspecie() {
+        return especie;
     }
 
     @Override

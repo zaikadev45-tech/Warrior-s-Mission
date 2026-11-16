@@ -1,6 +1,8 @@
 package com.zaikadev.warriorsmission;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -12,55 +14,50 @@ import android.view.View;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 /**
- * Tela do jogo em pixel art, estilo "Dragon Quest".
+ * Tela do jogo em pixel art estilo "Dragon Quest": mundo aberto + batalhas.
  * Desenha numa tela virtual de 320x180 e escala para o celular.
  */
 public class GameView extends View {
 
     private static final float W = 320f;
     private static final float H = 180f;
+    private static final int TILE = 16;
 
     // estados da tela
-    private static final int TITLE = 0, ASK_SKIP = 1, MESSAGE = 2, MENU = 3, END = 4;
+    private static final int TITLE = 0, ASK_SKIP = 1, MESSAGE = 2, MENU = 3, END = 4, WORLD = 5;
+    // o que aparece atrás das janelas
+    private static final int SCENE_BLACK = 0, SCENE_WORLD = 1, SCENE_BATTLE = 2;
     // passos da fila de mensagens
-    private static final int S_TEXT = 0, S_PLAYER_ATTACK = 1, S_MONSTER_ATTACK = 2, S_HEAL = 3;
+    private static final int S_TEXT = 0, S_PLAYER_ATTACK = 1, S_MONSTER_ATTACK = 2,
+            S_HEAL = 3, S_FLEE = 4, S_REWARD = 5;
     // o que fazer quando as mensagens acabarem
-    private static final int AFTER_MENU = 0, AFTER_START = 1, AFTER_END = 2;
+    private static final int AFTER_MENU = 0, AFTER_START = 1, AFTER_END = 2,
+            AFTER_WORLD = 3, AFTER_RESPAWN = 4;
 
-    private static final int HEAL_COST = 100;
-    private static final int HEAL_AMOUNT = 200;
+    private static final int HEAL_COST = 8;
     private static final int MAX_LINES = 4;
     private static final float TEXT_X = 18f;
     private static final float TEXT_W = 284f;
 
     // janelas (coordenadas da tela virtual)
     private static final float MSG_X = 8f, MSG_Y = 112f, MSG_W = 304f, MSG_H = 60f;
-    private static final float CMD_X = 8f, CMD_Y = 58f, CMD_W = 96f;
-    private static final float ROW_H = 18f;
+    private static final float CMD_X = 8f, CMD_Y = 54f, CMD_W = 96f;
+    private static final float ROW_H = 15f;
 
-    // sprite 16x16 do Rei Monstro
-    private static final String[] SPRITE = {
-            "..w..........w..",
-            "..ww........ww..",
-            "..wrd......drw..",
-            "...rrdddddddrr..",
-            "..rrrrrrrrrrrrr.",
-            ".rrrrrrrrrrrrrrr",
-            ".rryyyrrrrryyyrr",
-            ".rrkykrrrrrkykrr",
-            ".rrrrrrrddrrrrrr",
-            ".rrrrrrrrrrrrrrr",
-            ".rkwwkwwkwwkwwkr",
-            "..rkkkkkkkkkkkr.",
-            "..rrrrrrrrrrrrr.",
-            "...rrrddddddrr..",
-            "....ddddddddd...",
-            "................"
-    };
+    // controle na tela (setas)
+    private static final float PAD_X = 42f, PAD_Y = 140f, PAD_R = 52f;
+
+    // movimento do herói
+    private static final long HERO_STEP = 190L;
+    private static final int[] DX = {0, 0, -1, 1};      // 0=baixo 1=cima 2=esquerda 3=direita
+    private static final int[] DY = {1, -1, 0, 0};
+    private static final int[] FRAME_DIR = {3, 1, 0, 2}; // quadro do sprite para cada direção
 
     private static class Step {
         final int type;
@@ -81,12 +78,34 @@ public class GameView extends View {
     private long msgStart = 0;
 
     private int state = TITLE;
+    private int scene = SCENE_BLACK;
     private int after = AFTER_MENU;
     private int menuIndex = 0;
-    private boolean inBattle = false;
 
+    // gráficos
+    private Bitmap[][] tiles;
+    private Bitmap[] heroFrames = new Bitmap[4];
+    private final Map<Especie, Bitmap> bmpEspecies = new HashMap<Especie, Bitmap>();
+    private final Map<Npc, Bitmap> bmpNpcs = new HashMap<Npc, Bitmap>();
+
+    // jogo
+    private World world;
     private Player player;
-    private Monster monster;
+    private Monster battleMonster;
+    private Inimigo battleFoe;
+
+    // herói no mapa
+    private int heroX, heroY, heroFromX, heroFromY;
+    private int heroFacing = 0;
+    private boolean heroMoving = false;
+    private long heroMoveStart = 0;
+    private long invulnUntil = 0;
+    private int heldDir = -1;
+    private boolean holdValid = false;
+
+    private String regiaoAtual = null;
+    private String bannerText = null;
+    private long bannerUntil = 0;
 
     private long shakeUntil = 0;
     private long monsterFlashUntil = 0;
@@ -107,18 +126,39 @@ public class GameView extends View {
         title.setTextAlign(Paint.Align.CENTER);
         title.setAntiAlias(true);
 
-        resetGame();
+        tiles = Sprites.tiles();
+        BitmapFactory.Options opts = new BitmapFactory.Options();
+        opts.inScaled = false;
+        Bitmap sheet = BitmapFactory.decodeResource(getResources(), R.drawable.hero_sheet, opts);
+        for (int i = 0; i < 4; i++) {
+            heroFrames[i] = Bitmap.createBitmap(sheet, i * TILE, 0, TILE, TILE);
+        }
+
+        novoJogo();
     }
 
-    // ------------------------------------------------------------ lógica
+    // ------------------------------------------------------------ lógica do jogo
 
-    private void resetGame() {
+    private void novoJogo() {
         player = new Player("Heroi");
-        monster = new Monster("Rei Monstro", 1000, 60);
+        world = new World();
+        heroX = world.startX;
+        heroY = world.startY;
+        heroFromX = heroX;
+        heroFromY = heroY;
+        heroMoving = false;
+        heroFacing = 0;
+        invulnUntil = 0;
+        heldDir = -1;
+        regiaoAtual = null;
+        bannerText = null;
+        battleFoe = null;
+        battleMonster = null;
         queue.clear();
         msgLines = new ArrayList<String>();
         monsterFlashUntil = 0;
         shakeUntil = 0;
+        bmpNpcs.clear();
     }
 
     private void startIntro() {
@@ -131,14 +171,52 @@ public class GameView extends View {
         queue.add(new Step(S_TEXT, "Anos ap\u00f3s ele cresceu e ficou forte e tinha o objetivo \u00fanico de "
                 + "saber aonde ele nasceu e quem"));
         after = AFTER_START;
-        inBattle = false;
+        scene = SCENE_BLACK;
         advance();
     }
 
-    private void startBattle() {
-        resetGame();
-        inBattle = true;
-        queue.add(new Step(S_TEXT, "Rei Monstro apareceu!"));
+    private void startWorld() {
+        novoJogo();
+        world.popular(heroX, heroY);
+        scene = SCENE_WORLD;
+        atualizarRegiao(SystemClock.uptimeMillis());
+        queue.add(new Step(S_TEXT, "Use as setas na tela para andar."));
+        queue.add(new Step(S_TEXT, "Encoste nos monstros para lutar e converse com as pessoas!"));
+        after = AFTER_WORLD;
+        advance();
+    }
+
+    private void atualizarRegiao(long now) {
+        String nome = world.regiaoNome(heroX, heroY);
+        if (nome != null && !nome.equals(regiaoAtual)) {
+            bannerText = nome;
+            bannerUntil = now + 2500L;
+        }
+        regiaoAtual = nome;
+    }
+
+    private void talk(Npc n) {
+        heldDir = -1;
+        queue.clear();
+        for (String fala : n.falas) {
+            queue.add(new Step(S_TEXT, fala));
+        }
+        if (n.cura) player.restaurarTudo();
+        after = AFTER_WORLD;
+        advance();
+    }
+
+    private void startBattle(Inimigo foe) {
+        heldDir = -1;
+        battleFoe = foe;
+        battleMonster = new Monster(foe.especie);
+        scene = SCENE_BATTLE;
+        queue.clear();
+        if (foe.especie.chefe) {
+            queue.add(new Step(S_TEXT, "O Rei Monstro bloqueia o seu caminho!"));
+        } else {
+            queue.add(new Step(S_TEXT, foe.especie.nome + " apareceu!"));
+        }
         after = AFTER_MENU;
         advance();
     }
@@ -156,26 +234,63 @@ public class GameView extends View {
             case S_TEXT:
                 msg = s.text;
                 break;
+
             case S_PLAYER_ATTACK:
-                msg = player.attackFisic(monster);
+                msg = player.attackFisic(battleMonster);
                 monsterFlashUntil = now + 500;
-                if (!monster.life()) {
-                    queue.addLast(new Step(S_TEXT, "Voc\u00ea venceu!"));
-                    after = AFTER_END;
+                if (!battleMonster.life()) {
+                    world.derrotar(battleFoe, now);
+                    if (battleFoe.especie.chefe) {
+                        queue.addLast(new Step(S_TEXT, "O Rei Monstro foi derrotado!"));
+                    } else {
+                        queue.addLast(new Step(S_TEXT, "Voc\u00ea venceu!"));
+                    }
+                    queue.addLast(new Step(S_REWARD, null));
+                    after = battleFoe.especie.chefe ? AFTER_END : AFTER_WORLD;
                 } else {
                     queue.addLast(new Step(S_MONSTER_ATTACK, null));
                 }
                 break;
+
             case S_HEAL:
-                msg = player.cura(HEAL_COST, HEAL_AMOUNT);
+                msg = player.cura(HEAL_COST, player.poderCura());
                 queue.addLast(new Step(S_MONSTER_ATTACK, null));
                 break;
+
+            case S_FLEE:
+                if (battleFoe.especie.chefe) {
+                    msg = "N\u00e3o h\u00e1 como fugir do Rei Monstro!";
+                    after = AFTER_MENU;
+                } else if (rnd.nextInt(100) < 60) {
+                    msg = "Voc\u00ea fugiu!";
+                    world.atordoar(battleFoe, now, 3000L);
+                    invulnUntil = now + 2500L;
+                    after = AFTER_WORLD;
+                } else {
+                    msg = "N\u00e3o conseguiu fugir!";
+                    queue.addLast(new Step(S_MONSTER_ATTACK, null));
+                }
+                break;
+
+            case S_REWARD:
+                if (battleFoe.especie.chefe) {
+                    msg = "A paz voltou ao reino. Sua miss\u00e3o est\u00e1 completa!";
+                } else {
+                    int ganho = battleFoe.especie.xp;
+                    int subiu = player.ganharXp(ganho);
+                    msg = "Ganhou " + ganho + " de XP.";
+                    if (subiu > 0) {
+                        msg += " Subiu para o n\u00edvel " + player.getLevel() + "! HP e MP restaurados.";
+                    }
+                }
+                break;
+
             case S_MONSTER_ATTACK:
-                msg = monster.attackFisic(player);
+                msg = battleMonster.attackFisic(player);
                 shakeUntil = now + 350;
                 if (!player.life()) {
-                    queue.addLast(new Step(S_TEXT, "Heroi morreu..."));
-                    after = AFTER_END;
+                    queue.addLast(new Step(S_TEXT, "Heroi desmaiou..."));
+                    after = AFTER_RESPAWN;
                 } else {
                     after = AFTER_MENU;
                 }
@@ -201,16 +316,38 @@ public class GameView extends View {
     }
 
     private void finishMessages() {
+        long now = SystemClock.uptimeMillis();
         switch (after) {
             case AFTER_MENU:
                 state = MENU;
                 menuIndex = 0;
                 break;
             case AFTER_START:
-                startBattle();
+                startWorld();
                 break;
             case AFTER_END:
+                scene = SCENE_BLACK;
                 state = END;
+                break;
+            case AFTER_WORLD:
+                scene = SCENE_WORLD;
+                state = WORLD;
+                heldDir = -1;
+                break;
+            case AFTER_RESPAWN:
+                player.restaurarTudo();
+                if (battleFoe != null) world.atordoar(battleFoe, now, 3000L);
+                heroX = world.startX;
+                heroY = world.startY;
+                heroFromX = heroX;
+                heroFromY = heroY;
+                heroMoving = false;
+                invulnUntil = now + 2500L;
+                regiaoAtual = null;
+                atualizarRegiao(now);
+                scene = SCENE_WORLD;
+                state = WORLD;
+                heldDir = -1;
                 break;
         }
     }
@@ -247,36 +384,113 @@ public class GameView extends View {
         return visibleChars(now) < totalChars();
     }
 
+    // ------------------------------------------------------------ mundo
+
+    private void updateWorld(long now) {
+        if (heroMoving && now - heroMoveStart >= HERO_STEP) {
+            heroMoving = false;
+        }
+        if (!heroMoving && heldDir != -1) {
+            tryMove(heldDir, now);
+        }
+        if (state == WORLD) {
+            Inimigo tocou = world.update(now, heroX, heroY, now < invulnUntil);
+            if (tocou != null) startBattle(tocou);
+        }
+    }
+
+    private void tryMove(int dir, long now) {
+        heroFacing = dir;
+        int nx = heroX + DX[dir];
+        int ny = heroY + DY[dir];
+        if (world.isSolid(nx, ny)) return;
+
+        Npc n = world.npcAt(nx, ny);
+        if (n != null) {
+            talk(n);
+            return;
+        }
+        Inimigo m = world.inimigoAt(nx, ny);
+        if (m != null) {
+            if (now >= invulnUntil) startBattle(m);
+            return;
+        }
+        heroFromX = heroX;
+        heroFromY = heroY;
+        heroX = nx;
+        heroY = ny;
+        heroMoving = true;
+        heroMoveStart = now;
+        atualizarRegiao(now);
+    }
+
+    private float heroDraw(boolean eixoX, long now) {
+        int from = eixoX ? heroFromX : heroFromY;
+        int to = eixoX ? heroX : heroY;
+        if (!heroMoving) return to * TILE;
+        float t = (now - heroMoveStart) / (float) HERO_STEP;
+        if (t < 0f) t = 0f;
+        if (t > 1f) t = 1f;
+        return (from + (to - from) * t) * TILE;
+    }
+
+    private int dirFromPad(float lx, float ly) {
+        float dx = lx - PAD_X;
+        float dy = ly - PAD_Y;
+        float r2 = dx * dx + dy * dy;
+        if (r2 > PAD_R * PAD_R || r2 < 25f) return -1;
+        if (Math.abs(dx) > Math.abs(dy)) {
+            return dx < 0 ? 2 : 3;
+        }
+        return dy < 0 ? 1 : 0;
+    }
+
     // ------------------------------------------------------------ toque
 
     private int hitMenu(float lx, float ly, int n) {
         if (lx < CMD_X - 4 || lx > CMD_X + CMD_W + 24) return -1;
         for (int i = 0; i < n; i++) {
             float top = CMD_Y + 6 + i * ROW_H;
-            if (ly >= top - 2 && ly < top + ROW_H - 2) return i;
+            if (ly >= top - 1 && ly < top + ROW_H - 1) return i;
         }
         return -1;
     }
 
     @Override
     public boolean onTouchEvent(MotionEvent e) {
-        if (e.getAction() != MotionEvent.ACTION_DOWN) return true;
+        int a = e.getActionMasked();
+        if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) {
+            heldDir = -1;
+            holdValid = false;
+            return true;
+        }
 
         float lx = (e.getX() - offX) / scale;
         float ly = (e.getY() - offY) / scale;
         long now = SystemClock.uptimeMillis();
 
+        if (a == MotionEvent.ACTION_DOWN) {
+            holdValid = (state == WORLD);
+        }
+        if (holdValid && state == WORLD) {
+            if (a == MotionEvent.ACTION_DOWN || a == MotionEvent.ACTION_MOVE) {
+                heldDir = dirFromPad(lx, ly);
+            }
+            return true;
+        }
+        if (a != MotionEvent.ACTION_DOWN) return true;
+
         switch (state) {
             case TITLE:
                 state = ASK_SKIP;
                 menuIndex = 0;
-                inBattle = false;
+                scene = SCENE_BLACK;
                 break;
 
             case ASK_SKIP: {
                 int i = hitMenu(lx, ly, 2);
                 if (i == 0) {
-                    startBattle();
+                    startWorld();
                 } else if (i == 1) {
                     startIntro();
                 }
@@ -292,7 +506,7 @@ public class GameView extends View {
                 break;
 
             case MENU: {
-                int i = hitMenu(lx, ly, 2);
+                int i = hitMenu(lx, ly, 3);
                 if (i == 0) {
                     after = AFTER_MENU;
                     queue.clear();
@@ -307,13 +521,18 @@ public class GameView extends View {
                         queue.add(new Step(S_HEAL, null));
                     }
                     advance();
+                } else if (i == 2) {
+                    queue.clear();
+                    after = AFTER_MENU;
+                    queue.add(new Step(S_FLEE, null));
+                    advance();
                 }
                 break;
             }
 
             case END:
                 state = TITLE;
-                inBattle = false;
+                scene = SCENE_BLACK;
                 break;
         }
         return true;
@@ -326,6 +545,8 @@ public class GameView extends View {
         long now = SystemClock.uptimeMillis();
         int w = getWidth();
         int h = getHeight();
+
+        if (state == WORLD) updateWorld(now);
 
         c.drawColor(Color.BLACK);
         scale = Math.min(w / W, h / H);
@@ -344,7 +565,9 @@ public class GameView extends View {
         if (state == TITLE) {
             drawTitle(c, now);
         } else {
-            if (inBattle) {
+            if (scene == SCENE_WORLD) {
+                drawWorld(c, now);
+            } else if (scene == SCENE_BATTLE) {
                 drawMonster(c, now);
                 drawHeroWindow(c);
             }
@@ -353,6 +576,133 @@ public class GameView extends View {
 
         c.restore();
         postInvalidateDelayed(33);
+    }
+
+    private Bitmap bitmapDe(Especie e) {
+        Bitmap b = bmpEspecies.get(e);
+        if (b == null) {
+            b = Sprites.deEspecie(e);
+            bmpEspecies.put(e, b);
+        }
+        return b;
+    }
+
+    private Bitmap bitmapDe(Npc n) {
+        Bitmap b = bmpNpcs.get(n);
+        if (b == null) {
+            int[] cabelos = {0xFF5A3A1A, 0xFF2A2A2A, 0xFFB0B0B0, 0xFFC8A040};
+            b = Sprites.npc(n.cor, cabelos[(n.x + n.y) % cabelos.length]);
+            bmpNpcs.put(n, b);
+        }
+        return b;
+    }
+
+    private void drawWorld(Canvas c, long now) {
+        float hpx = heroDraw(true, now);
+        float hpy = heroDraw(false, now);
+
+        int maxX = World.W * TILE - (int) W;
+        int maxY = World.H * TILE - (int) H;
+        int camX = (int) Math.floor(hpx + 8f - W / 2f);
+        int camY = (int) Math.floor(hpy + 8f - H / 2f);
+        camX = Math.max(0, Math.min(maxX, camX));
+        camY = Math.max(0, Math.min(maxY, camY));
+
+        int tx0 = Math.max(0, camX / TILE);
+        int ty0 = Math.max(0, camY / TILE);
+        int tx1 = Math.min(World.W - 1, (camX + (int) W) / TILE);
+        int ty1 = Math.min(World.H - 1, (camY + (int) H) / TILE);
+
+        for (int ty = ty0; ty <= ty1; ty++) {
+            for (int tx = tx0; tx <= tx1; tx++) {
+                int id = world.tiles[ty][tx];
+                c.drawBitmap(tiles[id][world.variante(tx, ty)],
+                        tx * TILE - camX, ty * TILE - camY, null);
+            }
+        }
+
+        for (Npc n : world.npcs) {
+            if (n.x < tx0 - 1 || n.x > tx1 + 1 || n.y < ty0 - 1 || n.y > ty1 + 1) continue;
+            c.drawBitmap(bitmapDe(n), n.x * TILE - camX, n.y * TILE - camY, null);
+        }
+
+        for (Inimigo m : world.inimigos) {
+            float px = m.px(now);
+            float py = m.py(now);
+            if (px < camX - TILE || px > camX + W || py < camY - TILE || py > camY + H) continue;
+            int bob = (((now / 350L) + m.id) % 2L == 0L) ? 0 : -1;
+            c.drawBitmap(bitmapDe(m.especie), px - camX, py - camY + bob, null);
+        }
+
+        // herói (pisca enquanto está invulnerável depois de fugir)
+        boolean piscando = now < invulnUntil && ((now / 100L) % 2L == 0L);
+        if (!piscando) {
+            int passo = 0;
+            if (heroMoving) passo = (((now - heroMoveStart) / 95L) % 2L == 0L) ? -1 : 0;
+            c.drawBitmap(heroFrames[FRAME_DIR[heroFacing]], hpx - camX, hpy - camY + passo, null);
+        }
+
+        drawHud(c);
+        drawPad(c);
+        drawBanner(c, now);
+    }
+
+    private void drawHud(Canvas c) {
+        window(c, 4f, 4f, 126f, 28f);
+        text.setTextSize(9f);
+        c.drawText("Nv " + player.getLevel() + "  XP " + player.getXp() + "/" + player.xpParaProximo(),
+                12f, 15f, text);
+        c.drawText("HP " + player.getHp() + "/" + player.getMaxHp()
+                + " MP " + player.getMana() + "/" + player.getMaxMana(), 12f, 26f, text);
+        text.setTextSize(11f);
+    }
+
+    private void drawBanner(Canvas c, long now) {
+        if (bannerText == null || now >= bannerUntil) return;
+        text.setTextSize(10f);
+        float tw = text.measureText(bannerText);
+        float bw = tw + 24f;
+        float bx = (W - bw) / 2f;
+        window(c, bx, 36f, bw, 20f);
+        c.drawText(bannerText, bx + 12f, 50f, text);
+        text.setTextSize(11f);
+    }
+
+    private void drawPad(Canvas c) {
+        float[][] botoes = {
+                {PAD_X, PAD_Y + 22f},   // baixo
+                {PAD_X, PAD_Y - 22f},   // cima
+                {PAD_X - 22f, PAD_Y},   // esquerda
+                {PAD_X + 22f, PAD_Y}    // direita
+        };
+        for (int d = 0; d < 4; d++) {
+            float cx = botoes[d][0];
+            float cy = botoes[d][1];
+            boolean ativo = (heldDir == d);
+            fill.setColor(ativo ? 0xAAFFFFFF : 0x66000000);
+            c.drawRect(cx - 11f, cy - 11f, cx + 11f, cy + 11f, fill);
+            fill.setColor(0xCCFFFFFF);
+            Path p = new Path();
+            if (d == 0) {
+                p.moveTo(cx - 5f, cy - 3f);
+                p.lineTo(cx + 5f, cy - 3f);
+                p.lineTo(cx, cy + 4f);
+            } else if (d == 1) {
+                p.moveTo(cx - 5f, cy + 3f);
+                p.lineTo(cx + 5f, cy + 3f);
+                p.lineTo(cx, cy - 4f);
+            } else if (d == 2) {
+                p.moveTo(cx + 3f, cy - 5f);
+                p.lineTo(cx + 3f, cy + 5f);
+                p.lineTo(cx - 4f, cy);
+            } else {
+                p.moveTo(cx - 3f, cy - 5f);
+                p.lineTo(cx - 3f, cy + 5f);
+                p.lineTo(cx + 4f, cy);
+            }
+            p.close();
+            c.drawPath(p, fill);
+        }
     }
 
     private void drawTitle(Canvas c, long now) {
@@ -369,12 +719,14 @@ public class GameView extends View {
     }
 
     private void drawBottom(Canvas c, long now) {
+        if (state == WORLD) return;
+
         if (state == ASK_SKIP) {
             drawMessageStatic(c, "Pular a introdu\u00e7\u00e3o?");
             drawMenu(c, new String[]{"Sim", "N\u00e3o"});
         } else if (state == MENU) {
             drawMessageStatic(c, "O que o Heroi vai fazer? (Curar custa " + HEAL_COST + " MP)");
-            drawMenu(c, new String[]{"Atacar", "Curar"});
+            drawMenu(c, new String[]{"Atacar", "Curar", "Fugir"});
         } else if (state == END) {
             List<String> lines = new ArrayList<String>();
             lines.add("=====[   FIM   ]=====");
@@ -415,22 +767,24 @@ public class GameView extends View {
         window(c, CMD_X, CMD_Y, CMD_W, h);
         for (int i = 0; i < opts.length; i++) {
             float top = CMD_Y + 6 + i * ROW_H;
-            if (i == menuIndex) triangleRight(c, CMD_X + 8f, top + 4f);
-            c.drawText(opts[i], CMD_X + 22f, top + 12f, text);
+            if (i == menuIndex) triangleRight(c, CMD_X + 8f, top + 3f);
+            c.drawText(opts[i], CMD_X + 22f, top + 11f, text);
         }
     }
 
     private void drawHeroWindow(Canvas c) {
         window(c, 8f, 8f, 96f, 44f);
         text.setTextSize(10f);
-        c.drawText(player.getNome(), 18f, 22f, text);
+        c.drawText(player.getNome() + "  Nv " + player.getLevel(), 18f, 22f, text);
         c.drawText("HP " + player.getHp() + "/" + player.getMaxHp(), 18f, 33f, text);
         c.drawText("MP " + player.getMana() + "/" + player.getMaxMana(), 18f, 44f, text);
         text.setTextSize(11f);
     }
 
     private void drawMonster(Canvas c, long now) {
-        boolean alive = monster.life();
+        if (battleMonster == null) return;
+        Especie esp = battleMonster.getEspecie();
+        boolean alive = battleMonster.life();
         boolean flashing = now < monsterFlashUntil;
         if (!alive && !flashing) return;
 
@@ -440,12 +794,12 @@ public class GameView extends View {
         float y0 = 6f + bob;
         float cell = 6f;
 
-        for (int r = 0; r < SPRITE.length; r++) {
-            String row = SPRITE[r];
+        for (int r = 0; r < esp.sprite.length; r++) {
+            String row = esp.sprite[r];
             for (int col = 0; col < row.length(); col++) {
                 char ch = row.charAt(col);
                 if (ch == '.') continue;
-                fill.setColor(white ? Color.WHITE : spriteColor(ch));
+                fill.setColor(white ? Color.WHITE : esp.cor(ch));
                 c.drawRect(x0 + col * cell, y0 + r * cell,
                         x0 + (col + 1) * cell, y0 + (r + 1) * cell, fill);
             }
@@ -455,19 +809,8 @@ public class GameView extends View {
             fill.setColor(0xFF444444);
             c.drawRect(112f, 107f, 208f, 110f, fill);
             fill.setColor(0xFFC8321E);
-            float frac = (float) monster.getHp() / (float) monster.getMaxHp();
+            float frac = (float) battleMonster.getHp() / (float) battleMonster.getMaxHp();
             c.drawRect(112f, 107f, 112f + 96f * frac, 110f, fill);
-        }
-    }
-
-    private int spriteColor(char ch) {
-        switch (ch) {
-            case 'r': return 0xFFC8321E;
-            case 'd': return 0xFF7A1010;
-            case 'w': return 0xFFF2F2F2;
-            case 'y': return 0xFFFFD21E;
-            case 'k': return 0xFF140A0A;
-            default:  return Color.MAGENTA;
         }
     }
 
