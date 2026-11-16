@@ -1,0 +1,27 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.zaikadev.warriorsmission'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.zaikadev.warriorsmission"
+        minSdk 19        // Android 4.4 em diante (roda também no Android 10)
+        targetSdk 29     // Android 10
+        versionCode 1
+        versionName "0.7.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
