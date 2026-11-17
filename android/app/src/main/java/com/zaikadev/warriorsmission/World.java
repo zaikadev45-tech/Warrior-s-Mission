@@ -5,23 +5,25 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * O mundo aberto: mapa de 96x96 tiles gerado a partir do desenho da ilha,
+ * O mundo aberto: mapa de 144x144 tiles gerado a partir do desenho da ilha,
  * pessoas (Npc) e monstros que andam sozinhos (Inimigo).
- * Cada tile tem 16x16 pixels.
+ * Cada tile tem 32x32 pixels.
  */
 public class World {
 
-    public static final int W = 96;
-    public static final int H = 96;
+    public static final int W = 144;
+    public static final int H = 144;
+    public static final int TILE = 32;
     public static final long PASSO_MONSTRO = 450L;
-    public static final int MAX_INIMIGOS = 36;
+    public static final int MAX_INIMIGOS = 56;
 
     // tipos de tile
     public static final int AGUA = 0, GRAMA = 1, ARVORE = 2, CAMINHO = 3, AREIA = 4,
             MONTANHA = 5, PISO_CASTELO = 6, MURO_CASTELO = 7, PAREDE_CASA = 8,
             TERRA_ESCURA = 9, LAVA = 10, TERRA_GUERRA = 11, FLOR = 12, TELHADO = 13,
-            PORTA = 14, MURO_DEMONIO = 15, PISO_ESCURO = 16, PEDRA = 17;
-    public static final int NUM_TILES = 18;
+            PORTA = 14, MURO_DEMONIO = 15, PISO_ESCURO = 16, PEDRA = 17, PINHEIRO = 18,
+            GRAMA_ALTA = 19, TELHADO_AZ = 20, TELHADO_VD = 21, TAPETE = 22, ARVORE_MORTA = 23;
+    public static final int NUM_TILES = 24;
 
     public static class Area {
         public final String nome;
@@ -54,12 +56,13 @@ public class World {
     public Area reino, vila, guerra, demonio, passagem;
 
     private final boolean[][] reservado = new boolean[H][W];
+    private final boolean[][] margemEstrada = new boolean[H][W];
     private final List<Respawn> respawns = new ArrayList<Respawn>();
     private final Random rnd = new Random();
     private int proximoId = 0;
 
     // coordenadas do desenho original (550x550)
-    private static final double ESC = 550.0 / 96.0;
+    private static final double ESC = 550.0 / 144.0;
 
     private static final double[][] ILHA = {
             {105, 74}, {180, 68}, {260, 78}, {295, 88}, {335, 90}, {430, 100}, {475, 128},
@@ -73,8 +76,14 @@ public class World {
             {335, 378}, {318, 340}, {300, 280}, {292, 200}
     };
 
+    /** Converte uma coordenada do desenho (0..550) para tiles. */
     private static int T(double d) {
-        return (int) Math.round(d * 96.0 / 550.0);
+        return (int) Math.round(d * W / 550.0);
+    }
+
+    /** Converte uma coordenada do mapa antigo (96x96) para o mapa atual. */
+    private static int S(int n) {
+        return (int) Math.round(n * W / 96.0);
     }
 
     public World() {
@@ -92,9 +101,13 @@ public class World {
             case PAREDE_CASA:
             case LAVA:
             case TELHADO:
+            case TELHADO_AZ:
+            case TELHADO_VD:
             case PORTA:
             case MURO_DEMONIO:
             case PEDRA:
+            case PINHEIRO:
+            case ARVORE_MORTA:
                 return true;
             default:
                 return false;
@@ -137,14 +150,14 @@ public class World {
     /** Qual monstro vive nessa posição (null = zona segura). */
     public Especie especieAt(int x, int y) {
         if (vila.contains(x, y) || reino.contains(x, y)) return null;
-        if (x >= 62) return Especie.SOLDADO;
+        if (x >= S(62)) return Especie.SOLDADO;
         if (guerra.contains(x, y)) return Especie.GOBLIN;
         return Especie.SLIME;
     }
 
     private boolean tileDeMonstro(int id) {
         return id == GRAMA || id == FLOR || id == AREIA || id == TERRA_GUERRA
-                || id == TERRA_ESCURA || id == CAMINHO;
+                || id == TERRA_ESCURA || id == CAMINHO || id == GRAMA_ALTA;
     }
 
     private boolean monstroPodeFicar(Especie e, int x, int y) {
@@ -160,12 +173,12 @@ public class World {
         respawns.clear();
         proximoId = 0;
 
-        Inimigo rei = new Inimigo(proximoId++, Especie.REI, 72, 25);
+        Inimigo rei = new Inimigo(proximoId++, Especie.REI, S(72), S(25));
         rei.fixo = true;
         inimigos.add(rei);
 
         Especie[] tipos = {Especie.SLIME, Especie.GOBLIN, Especie.SOLDADO};
-        int[] qtd = {14, 10, 12};
+        int[] qtd = {21, 15, 18};
         for (int i = 0; i < tipos.length; i++) {
             for (int k = 0; k < qtd[i]; k++) {
                 gerarInimigo(tipos[i], heroX, heroY);
@@ -174,11 +187,11 @@ public class World {
     }
 
     private boolean gerarInimigo(Especie e, int heroX, int heroY) {
-        for (int tentativa = 0; tentativa < 120; tentativa++) {
+        for (int tentativa = 0; tentativa < 160; tentativa++) {
             int x = rnd.nextInt(W);
             int y = rnd.nextInt(H);
             if (!monstroPodeFicar(e, x, y)) continue;
-            if (Math.abs(x - heroX) + Math.abs(y - heroY) < 10) continue;
+            if (Math.abs(x - heroX) + Math.abs(y - heroY) < 12) continue;
             if (inimigoAt(x, y) != null || npcAt(x, y) != null) continue;
             inimigos.add(new Inimigo(proximoId++, e, x, y));
             return true;
@@ -244,7 +257,7 @@ public class World {
     }
 
     private boolean podeAndar(Inimigo m, int nx, int ny, int heroX, int heroY) {
-        if (Math.abs(nx - m.homeX) > 4 || Math.abs(ny - m.homeY) > 4) return false;
+        if (Math.abs(nx - m.homeX) > 5 || Math.abs(ny - m.homeY) > 5) return false;
         if (!monstroPodeFicar(m.especie, nx, ny)) return false;
         if (nx == heroX && ny == heroY) return false;
         if (npcAt(nx, ny) != null) return false;
@@ -297,8 +310,8 @@ public class World {
             for (int x = 0; x < W; x++) {
                 double px = (x + 0.5) * ESC;
                 double py = (y + 0.5) * ESC;
-                double ox = (vnoise(x / 5.0, y / 5.0, 1) - 0.5) * 34;
-                double oy = (vnoise(x / 5.0 + 40, y / 5.0 + 40, 2) - 0.5) * 34;
+                double ox = (vnoise(x / 7.5, y / 7.5, 1) - 0.5) * 34;
+                double oy = (vnoise(x / 7.5 + 40, y / 7.5 + 40, 2) - 0.5) * 34;
                 tiles[y][x] = dentro(ILHA, px + ox, py + oy) ? GRAMA : AGUA;
             }
         }
@@ -324,8 +337,8 @@ public class World {
                 if (tiles[y][x] == AGUA) continue;
                 double px = (x + 0.5) * ESC;
                 double py = (y + 0.5) * ESC;
-                double ox = (vnoise(x / 4.0, y / 4.0, 3) - 0.5) * 16;
-                double oy = (vnoise(x / 4.0 + 20, y / 4.0 + 20, 4) - 0.5) * 8;
+                double ox = (vnoise(x / 6.0, y / 6.0, 3) - 0.5) * 16;
+                double oy = (vnoise(x / 6.0 + 20, y / 6.0 + 20, 4) - 0.5) * 8;
                 if (dentro(MONT, px + ox, py + oy)) tiles[y][x] = MONTANHA;
             }
         }
@@ -359,29 +372,30 @@ public class World {
         montarVila();
 
         // 6) estradas
-        int[][] estrada1 = {{41, 82}, {41, 50}, {33, 47}, {28, 42}, {25, 38}, {25, 28}};
-        int[][] estrada2 = {{41, 52}, {66, 52}, {70, 48}, {72, 44}, {72, 32}};
-        int[][] cruzamento = {{17, 33}, {34, 33}};
-        int[][] pracaVila = {{36, 76}, {48, 76}};
-        estrada(estrada1);
-        estrada(estrada2);
-        estrada(cruzamento);
-        estrada(pracaVila);
+        estrada(new int[][]{{S(41), S(82)}, {S(41), S(50)}, {S(33), S(47)}, {S(28), S(42)},
+                {S(25), S(38)}, {S(25), S(28)}});
+        estrada(new int[][]{{S(41), S(52)}, {S(66), S(52)}, {S(70), S(48)}, {S(72), S(44)},
+                {S(72), S(32)}});
+        estrada(new int[][]{{S(17), S(33)}, {S(34), S(33)}});
+        estrada(new int[][]{{S(36), S(76)}, {S(48), S(76)}});
 
-        // 7) árvores, flores
-        startX = 42;
-        startY = 77;
-        for (int y = 0; y < H; y++) {
-            for (int x = 0; x < W; x++) {
-                if (tiles[y][x] != GRAMA || reservado[y][x]) continue;
-                if (Math.abs(x - startX) + Math.abs(y - startY) < 7) continue;
-                double f = vnoise(x / 4.5, y / 4.5, 7);
-                if (f > 0.62 && hash(x, y, 9) < 0.75) {
-                    tiles[y][x] = ARVORE;
-                } else if (hash(x, y, 11) < 0.05) {
-                    tiles[y][x] = FLOR;
-                }
-            }
+        startX = S(42);
+        startY = S(77);
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) reservado[startY + dy][startX + dx] = true;
+        }
+
+        // 7) lagos
+        criarLagos();
+
+        // 8) árvores, flores e capim
+        enfeitar();
+
+        // 9) tapete do castelo
+        int portao = reino.x0 + 14;
+        for (int y = reino.y0 + 5; y <= reino.y0 + 14; y++) {
+            tiles[y][portao] = TAPETE;
+            tiles[y][portao + 1] = TAPETE;
         }
 
         criarNpcs();
@@ -429,20 +443,23 @@ public class World {
                 || id == TERRA_ESCURA || id == PEDRA) {
             tiles[y][x] = CAMINHO;
         }
-        reservado[y][x] = true;
-        // margem para as árvores não fecharem a estrada
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -1; dx <= 1; dx++) {
                 int nx = x + dx, ny = y + dy;
-                if (nx >= 0 && ny >= 0 && nx < W && ny < H) reservado[ny][nx] = true;
+                if (nx >= 0 && ny >= 0 && nx < W && ny < H) {
+                    reservado[ny][nx] = true;
+                    margemEstrada[ny][nx] = true;
+                }
             }
         }
     }
 
-    private void casa(int x, int y, int larg) {
+    /** cor: 0 = telhado vermelho, 1 = azul, 2 = verde */
+    private void casa(int x, int y, int larg, int cor) {
+        int telhado = cor == 0 ? TELHADO : (cor == 1 ? TELHADO_AZ : TELHADO_VD);
         for (int i = 0; i < larg; i++) {
-            tiles[y][x + i] = TELHADO;
-            tiles[y + 1][x + i] = TELHADO;
+            tiles[y][x + i] = telhado;
+            tiles[y + 1][x + i] = telhado;
             tiles[y + 2][x + i] = PAREDE_CASA;
         }
         tiles[y + 2][x + larg / 2] = PORTA;
@@ -459,27 +476,27 @@ public class World {
     private void montarReino() {
         limpar(reino, GRAMA);
         reservar(reino, 0);
-        int cx0 = reino.x0 + 5, cx1 = reino.x0 + 14;
-        int cy0 = reino.y0 + 1, cy1 = reino.y0 + 9;
+        int cx0 = reino.x0 + 8, cx1 = reino.x0 + 21;
+        int cy0 = reino.y0 + 2, cy1 = reino.y0 + 14;
         for (int y = cy0; y <= cy1; y++) {
             for (int x = cx0; x <= cx1; x++) {
                 boolean borda = (x == cx0 || x == cx1 || y == cy0 || y == cy1);
                 tiles[y][x] = borda ? MURO_CASTELO : PISO_CASTELO;
             }
         }
-        int portao = reino.x0 + 9;
+        int portao = reino.x0 + 14;
         tiles[cy1][portao] = PISO_CASTELO;
         tiles[cy1][portao + 1] = PISO_CASTELO;
-        casa(reino.x0 + 1, reino.y0 + 12, 5);
-        casa(reino.x0 + 14, reino.y0 + 12, 5);
-        casa(reino.x0 + 14, reino.y0 + 17, 5);
+        casa(reino.x0 + 2, reino.y0 + 18, 7, 1);
+        casa(reino.x0 + 21, reino.y0 + 18, 7, 0);
+        casa(reino.x0 + 21, reino.y0 + 26, 7, 2);
     }
 
     private void montarDemonio() {
         limpar(demonio, TERRA_ESCURA);
         reservar(demonio, 0);
-        int cx0 = demonio.x0 + 3, cx1 = demonio.x0 + 13;
-        int cy0 = demonio.y0, cy1 = demonio.y0 + 9;
+        int cx0 = demonio.x0 + 5, cx1 = demonio.x0 + 20;
+        int cy0 = demonio.y0, cy1 = demonio.y0 + 14;
         for (int y = cy0; y <= cy1; y++) {
             for (int x = cx0; x <= cx1; x++) {
                 if (tiles[y][x] == AGUA) continue;
@@ -487,12 +504,12 @@ public class World {
                 tiles[y][x] = borda ? MURO_DEMONIO : PISO_ESCURO;
             }
         }
-        int portao = demonio.x0 + 8;
+        int portao = demonio.x0 + 12;
         tiles[cy1][portao] = PISO_ESCURO;
         tiles[cy1][portao + 1] = PISO_ESCURO;
-        lava(demonio.x0 + 2, demonio.y0 + 16, 2);
-        lava(demonio.x1 - 2, demonio.y0 + 19, 2);
-        lava(demonio.x0 + 5, demonio.y0 + 21, 2);
+        lava(demonio.x0 + 3, demonio.y0 + 24, 3);
+        lava(demonio.x1 - 3, demonio.y0 + 29, 3);
+        lava(demonio.x0 + 8, demonio.y0 + 32, 3);
     }
 
     private void lava(int cx, int cy, int r) {
@@ -510,10 +527,80 @@ public class World {
     private void montarVila() {
         limpar(vila, GRAMA);
         reservar(vila, 0);
-        casa(36, 71, 5);
-        casa(44, 71, 5);
-        casa(36, 78, 5);
-        casa(44, 78, 5);
+        casa(S(36), S(71), 7, 0);
+        casa(S(44), S(71), 7, 1);
+        casa(S(36), S(78), 7, 2);
+        casa(S(44), S(78), 7, 0);
+    }
+
+    /** Lagos no meio da grama. */
+    private void criarLagos() {
+        Random lr = new Random(4242);
+        int feitos = 0;
+        for (int tentativa = 0; tentativa < 400 && feitos < 7; tentativa++) {
+            int cx = 8 + lr.nextInt(W - 16);
+            int cy = 8 + lr.nextInt(H - 16);
+            int r = 3 + lr.nextInt(3);
+            boolean ok = true;
+            for (int y = cy - r - 3; y <= cy + r + 3 && ok; y++) {
+                for (int x = cx - r - 3; x <= cx + r + 3; x++) {
+                    if (x < 0 || y < 0 || x >= W || y >= H) { ok = false; break; }
+                    int id = tiles[y][x];
+                    if (reservado[y][x] || (id != GRAMA && id != FLOR)) { ok = false; break; }
+                }
+            }
+            if (!ok) continue;
+            for (int y = cy - r - 1; y <= cy + r + 1; y++) {
+                for (int x = cx - r - 1; x <= cx + r + 1; x++) {
+                    double d = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
+                    double lim = r + (vnoise(x / 2.5, y / 2.5, 31) - 0.5) * 2.2;
+                    if (d <= lim) tiles[y][x] = AGUA;
+                }
+            }
+            for (int y = cy - r - 3; y <= cy + r + 3; y++) {
+                for (int x = cx - r - 3; x <= cx + r + 3; x++) {
+                    if (tiles[y][x] != GRAMA) continue;
+                    if (tiles[y][x - 1] == AGUA || tiles[y][x + 1] == AGUA
+                            || tiles[y - 1][x] == AGUA || tiles[y + 1][x] == AGUA) {
+                        tiles[y][x] = AREIA;
+                    }
+                }
+            }
+            for (int y = cy - r - 3; y <= cy + r + 3; y++) {
+                for (int x = cx - r - 3; x <= cx + r + 3; x++) reservado[y][x] = true;
+            }
+            feitos++;
+        }
+    }
+
+    private void enfeitar() {
+        for (int y = 0; y < H; y++) {
+            for (int x = 0; x < W; x++) {
+                int id = tiles[y][x];
+                if (id == TERRA_ESCURA && !reservadoCastelo(x, y) && !margemEstrada[y][x]
+                        && hash(x, y, 17) < 0.05) {
+                    tiles[y][x] = ARVORE_MORTA;
+                    continue;
+                }
+                if (id != GRAMA || reservado[y][x]) continue;
+                if (Math.abs(x - startX) + Math.abs(y - startY) < 9) continue;
+                double f = vnoise(x / 6.5, y / 6.5, 7);
+                if (f > 0.6 && hash(x, y, 9) < 0.78) {
+                    boolean faixaMontanha = Math.abs(x - 92) < 24 && y < 100;
+                    boolean pinheiro = faixaMontanha ? hash(x, y, 13) < 0.8 : hash(x, y, 13) < 0.15;
+                    tiles[y][x] = pinheiro ? PINHEIRO : ARVORE;
+                } else if (vnoise(x / 5.0, y / 5.0, 15) > 0.68 && hash(x, y, 19) < 0.55) {
+                    tiles[y][x] = GRAMA_ALTA;
+                } else if (hash(x, y, 11) < 0.07) {
+                    tiles[y][x] = FLOR;
+                }
+            }
+        }
+    }
+
+    private boolean reservadoCastelo(int x, int y) {
+        int cx0 = demonio.x0 + 5, cx1 = demonio.x0 + 20;
+        return x >= cx0 - 1 && x <= cx1 + 1 && y >= demonio.y0 && y <= demonio.y0 + 15;
     }
 
     // ------------------------------------------------------------ pessoas (edite as falas aqui!)
@@ -525,32 +612,33 @@ public class World {
 
     private void criarNpcs() {
         // Vila Inicial
-        addNpc(new Npc(39, 75, "Velho", 0xFF6A4FA0, false,
+        addNpc(new Npc(S(39), S(75), "Velho", 0xFF6A4FA0, false,
                 "Velho: Bem-vindo, jovem. Dizem que um garoto sobreviveu ao ataque ao reino de Vergiy.",
                 "Velho: Siga a estrada ao norte até a Área de Guerra. Mas cuidado com os monstros!"));
-        addNpc(new Npc(45, 75, "Curandeira", 0xFF2E9E6B, true,
+        addNpc(new Npc(S(45), S(75), "Curandeira", 0xFF2E9E6B, true,
                 "Curandeira: Você parece cansado. Deixe-me cuidar dos seus ferimentos.",
                 "Curandeira: Pronto! Seu HP e seu MP foram restaurados."));
-        addNpc(new Npc(43, 82, "Criança", 0xFFE0A030, false,
+        addNpc(new Npc(S(43), S(82), "Criança", 0xFFE0A030, false,
                 "Criança: Eu vi um monstro enorme no castelo escuro, lá no leste!"));
 
         // Área de Guerra
-        addNpc(new Npc(39, 54, "Soldado", 0xFF3A5FA8, false,
+        addNpc(new Npc(S(39), S(54), "Soldado", 0xFF3A5FA8, false,
                 "Soldado: Esta é a Área de Guerra. Os demônios vêm do leste, pela passagem da montanha.",
                 "Soldado: Fique forte antes de atravessar!"));
 
         // Reino e Castelo
-        addNpc(new Npc(24, 28, "Guarda", 0xFF8A8F99, false,
+        int portao = reino.x0 + 14;
+        addNpc(new Npc(portao - 2, reino.y0 + 15, "Guarda", 0xFF8A8F99, false,
                 "Guarda: O rei espera por você no castelo."));
-        addNpc(new Npc(27, 28, "Guarda", 0xFF8A8F99, false,
+        addNpc(new Npc(portao + 3, reino.y0 + 15, "Guarda", 0xFF8A8F99, false,
                 "Guarda: O Reino Demônio fica além da montanha, a leste."));
-        addNpc(new Npc(25, 22, "Rei", 0xFFC8A020, false,
+        addNpc(new Npc(portao, reino.y0 + 7, "Rei", 0xFFC8A020, false,
                 "Rei: Então você é o garoto que sobreviveu...",
                 "Rei: Derrote o Rei Monstro, no Reino Demônio, e traga paz ao nosso povo.",
                 "Rei: Que a sua missão tenha sucesso, herói!"));
-        addNpc(new Npc(21, 35, "Aldeã", 0xFFC0507A, false,
+        addNpc(new Npc(S(21), S(35), "Aldeã", 0xFFC0507A, false,
                 "Aldeã: Os monstros ficam mais fortes perto do Reino Demônio."));
-        addNpc(new Npc(28, 37, "Aldeão", 0xFF4A8A4A, false,
+        addNpc(new Npc(S(28), S(37), "Aldeão", 0xFF4A8A4A, false,
                 "Aldeão: Se estiver ferido, volte à Vila Inicial. A curandeira ajuda."));
     }
 }

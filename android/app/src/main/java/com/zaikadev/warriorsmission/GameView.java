@@ -29,7 +29,9 @@ public class GameView extends View {
 
     private static final float W = 320f;
     private static final float H = 180f;
-    private static final int TILE = 16;
+    private static final int TILE = World.TILE;       // 32 pixels
+    private static final int WORLD_W = 640, WORLD_H = 360;   // o mundo é desenhado em 640x360
+    private static final int HERO_W = 40, HERO_H = 48;       // tamanho de cada quadro do herói
 
     // estados da tela
     private static final int TITLE = 0, ASK_SKIP = 1, MESSAGE = 2, MENU = 3, END = 4, WORLD = 5;
@@ -68,7 +70,7 @@ public class GameView extends View {
     private static final int MUSIC_LOOP_START_MS = 3000;
 
     // movimento do herói
-    private static final long HERO_STEP = 190L;
+    private static final long HERO_STEP = 210L;
     private static final int[] DX = {0, 0, -1, 1};      // 0=baixo 1=cima 2=esquerda 3=direita
     private static final int[] DY = {1, -1, 0, 0};
     private static final int[] FRAME_DIR = {3, 1, 0, 2}; // quadro do sprite para cada direção
@@ -153,7 +155,7 @@ public class GameView extends View {
         opts.inScaled = false;
         Bitmap sheet = BitmapFactory.decodeResource(getResources(), R.drawable.hero_sheet, opts);
         for (int i = 0; i < 4; i++) {
-            heroFrames[i] = Bitmap.createBitmap(sheet, i * TILE, 0, TILE, TILE);
+            heroFrames[i] = Bitmap.createBitmap(sheet, i * HERO_W, 0, HERO_W, HERO_H);
         }
 
         titleBg = BitmapFactory.decodeResource(getResources(), R.drawable.title_bg, opts);
@@ -697,6 +699,7 @@ public class GameView extends View {
             if (scene == SCENE_WORLD) {
                 drawWorld(c, now);
             } else if (scene == SCENE_BATTLE) {
+                drawBattleBg(c);
                 drawMonster(c, now);
                 drawHeroWindow(c);
             }
@@ -730,23 +733,26 @@ public class GameView extends View {
         float hpx = heroDraw(true, now);
         float hpy = heroDraw(false, now);
 
-        int maxX = World.W * TILE - (int) W;
-        int maxY = World.H * TILE - (int) H;
-        int camX = (int) Math.floor(hpx + 8f - W / 2f);
-        int camY = (int) Math.floor(hpy + 8f - H / 2f);
-        camX = Math.max(0, Math.min(maxX, camX));
-        camY = Math.max(0, Math.min(maxY, camY));
+        int camX = (int) Math.floor(hpx + TILE / 2f - WORLD_W / 2f);
+        int camY = (int) Math.floor(hpy + TILE / 2f - WORLD_H / 2f);
+        camX = Math.max(0, Math.min(World.W * TILE - WORLD_W, camX));
+        camY = Math.max(0, Math.min(World.H * TILE - WORLD_H, camY));
+
+        c.save();
+        c.scale(0.5f, 0.5f); // o mundo usa o dobro de pixels da tela virtual (tiles de 32x32)
 
         int tx0 = Math.max(0, camX / TILE);
         int ty0 = Math.max(0, camY / TILE);
-        int tx1 = Math.min(World.W - 1, (camX + (int) W) / TILE);
-        int ty1 = Math.min(World.H - 1, (camY + (int) H) / TILE);
+        int tx1 = Math.min(World.W - 1, (camX + WORLD_W) / TILE);
+        int ty1 = Math.min(World.H - 1, (camY + WORLD_H) / TILE);
 
+        int brilho = (int) ((now / 450L) % 3L); // água e lava "brilham" trocando de quadro
         for (int ty = ty0; ty <= ty1; ty++) {
             for (int tx = tx0; tx <= tx1; tx++) {
                 int id = world.tiles[ty][tx];
-                c.drawBitmap(tiles[id][world.variante(tx, ty)],
-                        tx * TILE - camX, ty * TILE - camY, null);
+                int v = world.variante(tx, ty);
+                if (id == World.AGUA || id == World.LAVA) v = (v + brilho) % 3;
+                c.drawBitmap(tiles[id][v], tx * TILE - camX, ty * TILE - camY, null);
             }
         }
 
@@ -758,8 +764,8 @@ public class GameView extends View {
         for (Inimigo m : world.inimigos) {
             float px = m.px(now);
             float py = m.py(now);
-            if (px < camX - TILE || px > camX + W || py < camY - TILE || py > camY + H) continue;
-            int bob = (((now / 350L) + m.id) % 2L == 0L) ? 0 : -1;
+            if (px < camX - TILE || px > camX + WORLD_W || py < camY - TILE || py > camY + WORLD_H) continue;
+            int bob = (((now / 350L) + m.id) % 2L == 0L) ? 0 : -2;
             c.drawBitmap(bitmapDe(m.especie), px - camX, py - camY + bob, null);
         }
 
@@ -767,9 +773,13 @@ public class GameView extends View {
         boolean piscando = now < invulnUntil && ((now / 100L) % 2L == 0L);
         if (!piscando) {
             int passo = 0;
-            if (heroMoving) passo = (((now - heroMoveStart) / 95L) % 2L == 0L) ? -1 : 0;
-            c.drawBitmap(heroFrames[FRAME_DIR[heroFacing]], hpx - camX, hpy - camY + passo, null);
+            if (heroMoving) passo = (((now - heroMoveStart) / 105L) % 2L == 0L) ? -2 : 0;
+            c.drawBitmap(heroFrames[FRAME_DIR[heroFacing]],
+                    hpx - camX - (HERO_W - TILE) / 2f,
+                    hpy - camY - (HERO_H - TILE) + passo, null);
         }
+
+        c.restore();
 
         drawHud(c);
         drawPad(c);
@@ -909,6 +919,39 @@ public class GameView extends View {
             if (i == menuIndex) triangleRight(c, CMD_X + 8f, top + 3f);
             c.drawText(opts[i], CMD_X + 22f, top + 11f, text);
         }
+    }
+
+    private static int lerpColor(int a, int b, float t) {
+        int r = (int) (((a >> 16) & 255) + (((b >> 16) & 255) - ((a >> 16) & 255)) * t);
+        int g = (int) (((a >> 8) & 255) + (((b >> 8) & 255) - ((a >> 8) & 255)) * t);
+        int bl = (int) ((a & 255) + ((b & 255) - (a & 255)) * t);
+        return 0xFF000000 | (r << 16) | (g << 8) | bl;
+    }
+
+    /** Céu e chão coloridos atrás do monstro, de acordo com o lugar onde ele vive. */
+    private void drawBattleBg(Canvas c) {
+        if (battleMonster == null) return;
+        Especie e = battleMonster.getEspecie();
+        int topo, base, chao, chaoSombra;
+        if (e == Especie.SLIME) {
+            topo = 0xFF4FA8F0; base = 0xFFBFE6FF; chao = 0xFF5DC24B; chaoSombra = 0xFF3F9A33;
+        } else if (e == Especie.GOBLIN) {
+            topo = 0xFFB8603A; base = 0xFFF0B070; chao = 0xFF8B7355; chaoSombra = 0xFF6E5A42;
+        } else if (e == Especie.SOLDADO) {
+            topo = 0xFF2A1238; base = 0xFF8A2A3A; chao = 0xFF2A2030; chaoSombra = 0xFF1B1224;
+        } else {
+            topo = 0xFF12060C; base = 0xFF5A1018; chao = 0xFF1A0A10; chaoSombra = 0xFF0C0408;
+        }
+        int faixas = 10;
+        float alt = 100f / faixas;
+        for (int i = 0; i < faixas; i++) {
+            fill.setColor(lerpColor(topo, base, i / (float) (faixas - 1)));
+            c.drawRect(0f, i * alt, W, (i + 1) * alt + 1f, fill);
+        }
+        fill.setColor(chao);
+        c.drawRect(0f, 100f, W, H, fill);
+        fill.setColor(chaoSombra);
+        c.drawRect(0f, 100f, W, 105f, fill);
     }
 
     private void drawHeroWindow(Canvas c) {

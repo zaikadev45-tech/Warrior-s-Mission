@@ -32,6 +32,6 @@ public class Inimigo {
     }
 
     /** Posição em pixels (canto esquerdo) já suavizada. */
-    public float px(long now) { return lerp(fromX, x, now) * 16f; }
-    public float py(long now) { return lerp(fromY, y, now) * 16f; }
+    public float px(long now) { return lerp(fromX, x, now) * World.TILE; }
+    public float py(long now) { return lerp(fromY, y, now) * World.TILE; }
 }
