@@ -1,5 +1,6 @@
 package com.zaikadev.warriorsmission;
 
+import android.app.Activity;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -53,6 +54,15 @@ public class GameView extends View {
     // controle na tela (setas)
     private static final float PAD_X = 42f, PAD_Y = 140f, PAD_R = 52f;
 
+    // tela inicial: animação da capa (região e quadros gerados a partir da arte)
+    private static final int CAPE_X = 18, CAPE_Y = 80, CAPE_W = 54, CAPE_H = 72;
+    private static final int CAPE_FRAMES = 20;
+    private static final long CAPE_CYCLE = 3600L;  // tempo total de um ciclo (ms)
+    private static final long CAPE_GUST = 2000L;   // tempo em que o vento sopra (ms)
+    // botões desenhados na imagem da tela inicial: {topo, base} em pixels da tela virtual
+    private static final int[][] TITLE_BTN = {{96, 114}, {115, 131}, {132, 148}, {149, 165}};
+    private static final float TITLE_BTN_X0 = 114f, TITLE_BTN_X1 = 206f;
+
     // movimento do herói
     private static final long HERO_STEP = 190L;
     private static final int[] DX = {0, 0, -1, 1};      // 0=baixo 1=cima 2=esquerda 3=direita
@@ -85,6 +95,10 @@ public class GameView extends View {
     // gráficos
     private Bitmap[][] tiles;
     private Bitmap[] heroFrames = new Bitmap[4];
+    private Bitmap titleBg;
+    private Bitmap[] capeFrames = new Bitmap[CAPE_FRAMES];
+    private String titleNotice = null;
+    private long titleNoticeUntil = 0;
     private final Map<Especie, Bitmap> bmpEspecies = new HashMap<Especie, Bitmap>();
     private final Map<Npc, Bitmap> bmpNpcs = new HashMap<Npc, Bitmap>();
 
@@ -132,6 +146,12 @@ public class GameView extends View {
         Bitmap sheet = BitmapFactory.decodeResource(getResources(), R.drawable.hero_sheet, opts);
         for (int i = 0; i < 4; i++) {
             heroFrames[i] = Bitmap.createBitmap(sheet, i * TILE, 0, TILE, TILE);
+        }
+
+        titleBg = BitmapFactory.decodeResource(getResources(), R.drawable.title_bg, opts);
+        Bitmap capa = BitmapFactory.decodeResource(getResources(), R.drawable.title_cape, opts);
+        for (int i = 0; i < CAPE_FRAMES; i++) {
+            capeFrames[i] = Bitmap.createBitmap(capa, i * CAPE_W, 0, CAPE_W, CAPE_H);
         }
 
         novoJogo();
@@ -447,6 +467,14 @@ public class GameView extends View {
 
     // ------------------------------------------------------------ toque
 
+    private int titleHit(float lx, float ly) {
+        if (lx < TITLE_BTN_X0 || lx > TITLE_BTN_X1) return -1;
+        for (int i = 0; i < TITLE_BTN.length; i++) {
+            if (ly >= TITLE_BTN[i][0] && ly <= TITLE_BTN[i][1]) return i;
+        }
+        return -1;
+    }
+
     private int hitMenu(float lx, float ly, int n) {
         if (lx < CMD_X - 4 || lx > CMD_X + CMD_W + 24) return -1;
         for (int i = 0; i < n; i++) {
@@ -481,11 +509,21 @@ public class GameView extends View {
         if (a != MotionEvent.ACTION_DOWN) return true;
 
         switch (state) {
-            case TITLE:
-                state = ASK_SKIP;
-                menuIndex = 0;
-                scene = SCENE_BLACK;
+            case TITLE: {
+                int b = titleHit(lx, ly);
+                if (b == 0) {
+                    state = ASK_SKIP;
+                    menuIndex = 0;
+                    scene = SCENE_BLACK;
+                } else if (b == 1 || b == 2) {
+                    titleNotice = "Em breve!";
+                    titleNoticeUntil = now + 1500L;
+                } else if (b == 3) {
+                    Context ctx = getContext();
+                    if (ctx instanceof Activity) ((Activity) ctx).finish();
+                }
                 break;
+            }
 
             case ASK_SKIP: {
                 int i = hitMenu(lx, ly, 2);
@@ -706,15 +744,25 @@ public class GameView extends View {
     }
 
     private void drawTitle(Canvas c, long now) {
-        title.setColor(0xFFFFD21E);
-        title.setTextSize(22f);
-        c.drawText("WARRIOR'S MISSION", W / 2f, 78f, title);
-        title.setColor(Color.WHITE);
-        title.setTextSize(12f);
-        c.drawText("- RPG -", W / 2f, 98f, title);
-        if ((now / 500) % 2 == 0) {
-            title.setTextSize(11f);
-            c.drawText("Toque na tela para come\u00e7ar", W / 2f, 140f, title);
+        c.drawBitmap(titleBg, 0f, 0f, null);
+
+        // vento levantando a capa para a esquerda
+        long t = now % CAPE_CYCLE;
+        int f = 0;
+        if (t < CAPE_GUST) {
+            f = (int) (t * CAPE_FRAMES / CAPE_GUST);
+            if (f >= CAPE_FRAMES) f = CAPE_FRAMES - 1;
+        }
+        c.drawBitmap(capeFrames[f], CAPE_X, CAPE_Y, null);
+
+        if (titleNotice != null && now < titleNoticeUntil) {
+            text.setTextSize(8f);
+            float tw = text.measureText(titleNotice);
+            float bw = tw + 16f;
+            float bx = (W - bw) / 2f;
+            window(c, bx, 166f, bw, 13f);
+            c.drawText(titleNotice, bx + 8f, 175f, text);
+            text.setTextSize(11f);
         }
     }
 
