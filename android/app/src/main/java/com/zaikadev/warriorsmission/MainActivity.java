@@ -7,11 +7,32 @@ import android.view.WindowManager;
 
 public class MainActivity extends Activity {
 
+    private GameView view;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        setContentView(new GameView(this));
+        view = new GameView(this);
+        setContentView(view);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (view != null) view.pausarMusica();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (view != null) view.retomarMusica();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (view != null) view.liberarMusica();
+        super.onDestroy();
     }
 
     @Override

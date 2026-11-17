@@ -9,6 +9,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.Typeface;
+import android.media.MediaPlayer;
 import android.os.SystemClock;
 import android.view.MotionEvent;
 import android.view.View;
@@ -63,6 +64,9 @@ public class GameView extends View {
     private static final int[][] TITLE_BTN = {{96, 114}, {115, 131}, {132, 148}, {149, 165}};
     private static final float TITLE_BTN_X0 = 114f, TITLE_BTN_X1 = 206f;
 
+    // música da tela inicial: depois da 1ª vez, volta para este ponto (ms) em vez de ir ao começo
+    private static final int MUSIC_LOOP_START_MS = 3000;
+
     // movimento do herói
     private static final long HERO_STEP = 190L;
     private static final int[] DX = {0, 0, -1, 1};      // 0=baixo 1=cima 2=esquerda 3=direita
@@ -97,6 +101,10 @@ public class GameView extends View {
     private Bitmap[] heroFrames = new Bitmap[4];
     private Bitmap titleBg;
     private Bitmap[] capeFrames = new Bitmap[CAPE_FRAMES];
+    private MediaPlayer musica;
+    private boolean querMusica = false;
+    private boolean musicaSaindo = false;
+    private float musicaVol = 1f;
     private String titleNotice = null;
     private long titleNoticeUntil = 0;
     private final Map<Especie, Bitmap> bmpEspecies = new HashMap<Especie, Bitmap>();
@@ -155,6 +163,86 @@ public class GameView extends View {
         }
 
         novoJogo();
+        iniciarMusica();
+    }
+
+    // ------------------------------------------------------------ música
+
+    private void iniciarMusica() {
+        try {
+            if (musica == null) {
+                musica = MediaPlayer.create(getContext(), R.raw.musica_titulo);
+                if (musica == null) return;
+                musica.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+                    @Override
+                    public void onCompletion(MediaPlayer mp) {
+                        if (querMusica) {
+                            mp.seekTo(MUSIC_LOOP_START_MS);
+                            mp.start();
+                        }
+                    }
+                });
+            }
+            musicaSaindo = false;
+            musicaVol = 1f;
+            musica.setVolume(1f, 1f);
+            querMusica = true;
+            if (!musica.isPlaying()) {
+                musica.seekTo(0);
+                musica.start();
+            }
+        } catch (Exception e) {
+            // sem música o jogo continua normalmente
+        }
+    }
+
+    /** Diminui o volume até parar (usado quando o jogo começa). */
+    private void pararMusicaSuave() {
+        if (musica != null && querMusica) musicaSaindo = true;
+    }
+
+    private void atualizarMusica() {
+        if (musica == null || !musicaSaindo) return;
+        try {
+            musicaVol -= 0.035f;
+            if (musicaVol <= 0f) {
+                musica.pause();
+                musica.seekTo(0);
+                musicaSaindo = false;
+                querMusica = false;
+                musicaVol = 1f;
+            } else {
+                musica.setVolume(musicaVol, musicaVol);
+            }
+        } catch (Exception e) {
+            // ignora
+        }
+    }
+
+    public void pausarMusica() {
+        try {
+            if (musica != null && musica.isPlaying()) musica.pause();
+        } catch (Exception e) {
+            // ignora
+        }
+    }
+
+    public void retomarMusica() {
+        try {
+            if (musica != null && querMusica && !musica.isPlaying()) musica.start();
+        } catch (Exception e) {
+            // ignora
+        }
+    }
+
+    public void liberarMusica() {
+        try {
+            if (musica != null) musica.release();
+        } catch (Exception e) {
+            // ignora
+        }
+        musica = null;
+        querMusica = false;
     }
 
     // ------------------------------------------------------------ lógica do jogo
@@ -196,6 +284,7 @@ public class GameView extends View {
     }
 
     private void startWorld() {
+        pararMusicaSuave();
         novoJogo();
         world.popular(heroX, heroY);
         scene = SCENE_WORLD;
@@ -571,6 +660,7 @@ public class GameView extends View {
             case END:
                 state = TITLE;
                 scene = SCENE_BLACK;
+                iniciarMusica();
                 break;
         }
         return true;
@@ -585,6 +675,7 @@ public class GameView extends View {
         int h = getHeight();
 
         if (state == WORLD) updateWorld(now);
+        atualizarMusica();
 
         c.drawColor(Color.BLACK);
         scale = Math.min(w / W, h / H);
