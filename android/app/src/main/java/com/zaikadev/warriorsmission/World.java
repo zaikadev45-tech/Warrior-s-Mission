@@ -612,33 +612,33 @@ public class World {
 
     private void criarNpcs() {
         // Vila Inicial
-        addNpc(new Npc(S(39), S(75), "Velho", 0xFF6A4FA0, false,
+        addNpc(new Npc(S(39), S(75), "Velho", "velho", false,
                 "Velho: Bem-vindo, jovem. Dizem que um garoto sobreviveu ao ataque ao reino de Vergiy.",
                 "Velho: Siga a estrada ao norte até a Área de Guerra. Mas cuidado com os monstros!"));
-        addNpc(new Npc(S(45), S(75), "Curandeira", 0xFF2E9E6B, true,
+        addNpc(new Npc(S(45), S(75), "Curandeira", "curandeira", true,
                 "Curandeira: Você parece cansado. Deixe-me cuidar dos seus ferimentos.",
                 "Curandeira: Pronto! Seu HP e seu MP foram restaurados."));
-        addNpc(new Npc(S(43), S(82), "Criança", 0xFFE0A030, false,
+        addNpc(new Npc(S(43), S(82), "Criança", "crianca", false,
                 "Criança: Eu vi um monstro enorme no castelo escuro, lá no leste!"));
 
         // Área de Guerra
-        addNpc(new Npc(S(39), S(54), "Soldado", 0xFF3A5FA8, false,
+        addNpc(new Npc(S(39), S(54), "Soldado", "soldado", false,
                 "Soldado: Esta é a Área de Guerra. Os demônios vêm do leste, pela passagem da montanha.",
                 "Soldado: Fique forte antes de atravessar!"));
 
         // Reino e Castelo
         int portao = reino.x0 + 14;
-        addNpc(new Npc(portao - 2, reino.y0 + 15, "Guarda", 0xFF8A8F99, false,
+        addNpc(new Npc(portao - 2, reino.y0 + 15, "Guarda", "guarda", false,
                 "Guarda: O rei espera por você no castelo."));
-        addNpc(new Npc(portao + 3, reino.y0 + 15, "Guarda", 0xFF8A8F99, false,
+        addNpc(new Npc(portao + 3, reino.y0 + 15, "Guarda", "guarda", false,
                 "Guarda: O Reino Demônio fica além da montanha, a leste."));
-        addNpc(new Npc(portao, reino.y0 + 7, "Rei", 0xFFC8A020, false,
+        addNpc(new Npc(portao, reino.y0 + 7, "Rei", "rei", false,
                 "Rei: Então você é o garoto que sobreviveu...",
                 "Rei: Derrote o Rei Monstro, no Reino Demônio, e traga paz ao nosso povo.",
                 "Rei: Que a sua missão tenha sucesso, herói!"));
-        addNpc(new Npc(S(21), S(35), "Aldeã", 0xFFC0507A, false,
+        addNpc(new Npc(S(21), S(35), "Aldeã", "alda", false,
                 "Aldeã: Os monstros ficam mais fortes perto do Reino Demônio."));
-        addNpc(new Npc(S(28), S(37), "Aldeão", 0xFF4A8A4A, false,
+        addNpc(new Npc(S(28), S(37), "Aldeão", "aldeao", false,
                 "Aldeão: Se estiver ferido, volte à Vila Inicial. A curandeira ajuda."));
     }
 }

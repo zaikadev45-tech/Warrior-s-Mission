@@ -126,6 +126,17 @@ final class Sprites {
         }
     }
 
+    private static void guerraBase(int[] p, Random r) {
+        fill(p, 0xFF9A7E58);
+        for (int k = 0; k < 6; k++) circ(p, r.nextInt(T), r.nextInt(T), 3 + r.nextInt(3), 0xFF86694A);
+        for (int k = 0; k < 4; k++) circ(p, r.nextInt(T), r.nextInt(T), 2 + r.nextInt(2), 0xFFAD9468);
+        for (int k = 0; k < 3; k++) {
+            int x = r.nextInt(T), y = r.nextInt(T);
+            line(p, x, y, x + 3 + r.nextInt(5), y + 3 + r.nextInt(4), 0xFF5A4630);
+        }
+        speck(p, r, 0xFF6E5A42, 10);
+    }
+
     private static void telhado(int[] p, int base) {
         fill(p, base);
         for (int row = 0; row < 4; row++) {
@@ -400,20 +411,7 @@ final class Sprites {
                 break;
 
             case World.TERRA_GUERRA:
-                fill(p, 0xFF9A7E58);
-                for (int k = 0; k < 6; k++) circ(p, r.nextInt(T), r.nextInt(T), 3 + r.nextInt(3), 0xFF86694A);
-                for (int k = 0; k < 4; k++) circ(p, r.nextInt(T), r.nextInt(T), 2 + r.nextInt(2), 0xFFAD9468);
-                for (int k = 0; k < 3; k++) {
-                    int x = r.nextInt(T), y = r.nextInt(T);
-                    line(p, x, y, x + 3 + r.nextInt(5), y + 3 + r.nextInt(4), 0xFF5A4630);
-                }
-                speck(p, r, 0xFF6E5A42, 10);
-                if (v == 2) {
-                    int x = 6 + r.nextInt(18), y = 6 + r.nextInt(18);
-                    rect(p, x, y, x + 4, y, 0xFFEDE6D2);
-                    set(p, x - 1, y - 1, 0xFFEDE6D2); set(p, x - 1, y + 1, 0xFFEDE6D2);
-                    set(p, x + 5, y - 1, 0xFFEDE6D2); set(p, x + 5, y + 1, 0xFFEDE6D2);
-                }
+                guerraBase(p, r);
                 break;
 
             case World.MURO_DEMONIO:
@@ -445,14 +443,14 @@ final class Sprites {
                 break;
 
             case World.PEDRA:
-                grama(p, r);
-                ell(p, 16, 26, 13, 4, 0xFF3A8C2F);
+                guerraBase(p, r);
+                ell(p, 16, 26, 13, 4, 0xFF6E5A42);
                 ell(p, 16, 19, 12, 9, 0xFF6A6A6A);
                 ell(p, 15, 17, 11, 8, 0xFF9A9A9A);
                 ell(p, 12, 13, 6, 4, 0xFFC8C8C8);
                 line(p, 20, 14, 23, 20, 0xFF6A6A6A);
-                circ(p, 22, 24, 2, 0xFF5BA84A);
-                circ(p, 8, 22, 2, 0xFF5BA84A);
+                circ(p, 22, 24, 2, 0xFF7E8A5A);
+                circ(p, 8, 22, 2, 0xFF7E8A5A);
                 break;
 
             case World.TAPETE:
@@ -478,81 +476,16 @@ final class Sprites {
         return p;
     }
 
-    // ---------------------------------------------------------------- monstros
+    // ---------------------------------------------------------------- silhueta branca (efeito de dano)
 
-    /** Aumenta o desenho 16x16 para 32x32 suavizando as pontas (algoritmo "scale2x"). */
-    static Bitmap deEspecie(Especie e) {
-        int n = 16;
-        int[] src = new int[n * n];
-        for (int y = 0; y < n; y++) {
-            for (int x = 0; x < n; x++) {
-                char ch = e.sprite[y].charAt(x);
-                src[y * n + x] = (ch == '.') ? 0 : e.cor(ch);
-            }
+    static Bitmap branco(Bitmap src) {
+        int w = src.getWidth();
+        int h = src.getHeight();
+        int[] p = new int[w * h];
+        src.getPixels(p, 0, w, 0, 0, w, h);
+        for (int i = 0; i < p.length; i++) {
+            if ((p[i] >>> 24) != 0) p[i] = 0xFFFFFFFF;
         }
-        int[] dst = new int[T * T];
-        for (int y = 0; y < n; y++) {
-            for (int x = 0; x < n; x++) {
-                int pp = src[y * n + x];
-                int a = y > 0 ? src[(y - 1) * n + x] : 0;
-                int b = x < n - 1 ? src[y * n + x + 1] : 0;
-                int c = x > 0 ? src[y * n + x - 1] : 0;
-                int d = y < n - 1 ? src[(y + 1) * n + x] : 0;
-                int p1 = (c == a && c != d && a != b) ? a : pp;
-                int p2 = (a == b && a != c && b != d) ? b : pp;
-                int p3 = (d == c && d != b && c != a) ? c : pp;
-                int p4 = (b == d && b != a && d != c) ? d : pp;
-                dst[(2 * y) * T + 2 * x] = p1;
-                dst[(2 * y) * T + 2 * x + 1] = p2;
-                dst[(2 * y + 1) * T + 2 * x] = p3;
-                dst[(2 * y + 1) * T + 2 * x + 1] = p4;
-            }
-        }
-        // contorno escuro para destacar o monstro no cenário
-        int[] out = dst.clone();
-        for (int y = 0; y < T; y++) {
-            for (int x = 0; x < T; x++) {
-                if (dst[y * T + x] != 0) continue;
-                boolean perto = (x > 0 && dst[y * T + x - 1] != 0) || (x < T - 1 && dst[y * T + x + 1] != 0)
-                        || (y > 0 && dst[(y - 1) * T + x] != 0) || (y < T - 1 && dst[(y + 1) * T + x] != 0);
-                if (perto) out[y * T + x] = 0xFF1A1020;
-            }
-        }
-        return bitmap(out, T, T);
-    }
-
-    // ---------------------------------------------------------------- pessoas
-
-    static Bitmap npc(int roupa, int cabelo) {
-        int[] p = new int[T * T];
-        int pele = 0xFFF2C29B;
-        // sombra
-        ell(p, 16, 29, 8, 2, 0x66000000);
-        // pernas e botas
-        rect(p, 12, 23, 14, 27, 0xFF3A3A4A);
-        rect(p, 17, 23, 19, 27, 0xFF3A3A4A);
-        rect(p, 11, 27, 14, 29, 0xFF4A2A10);
-        rect(p, 17, 27, 20, 29, 0xFF4A2A10);
-        // corpo e braços
-        rect(p, 10, 14, 21, 23, roupa);
-        rect(p, 17, 14, 21, 23, shade(roupa, 0.8f));
-        rect(p, 10, 14, 21, 15, shade(roupa, 1.2f));
-        rect(p, 10, 20, 21, 20, 0xFF3A2A1A);
-        rect(p, 7, 15, 9, 22, shade(roupa, 0.9f));
-        rect(p, 22, 15, 24, 22, shade(roupa, 0.75f));
-        rect(p, 7, 22, 9, 24, pele);
-        rect(p, 22, 22, 24, 24, pele);
-        // cabeça
-        circ(p, 16, 8, 6, pele);
-        for (int y = 1; y <= 8; y++) {
-            for (int x = 9; x <= 23; x++) {
-                int dx = x - 16, dy = y - 7;
-                if (dx * dx + dy * dy <= 45 && (y < 7 || Math.abs(dx) >= 5)) p[y * T + x] = cabelo;
-            }
-        }
-        rect(p, 13, 9, 14, 10, 0xFF1A1A1A);
-        rect(p, 18, 9, 19, 10, 0xFF1A1A1A);
-        rect(p, 15, 12, 17, 12, 0xFFB8705A);
-        return bitmap(p, T, T);
+        return bitmap(p, w, h);
     }
 }

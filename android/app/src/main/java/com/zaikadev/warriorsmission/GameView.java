@@ -8,6 +8,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.media.MediaPlayer;
 import android.os.SystemClock;
@@ -31,7 +32,9 @@ public class GameView extends View {
     private static final float H = 180f;
     private static final int TILE = World.TILE;       // 32 pixels
     private static final int WORLD_W = 640, WORLD_H = 360;   // o mundo é desenhado em 640x360
-    private static final int HERO_W = 40, HERO_H = 48;       // tamanho de cada quadro do herói
+    private static final int HERO_W = 64, HERO_H = 64;       // tamanho de cada quadro do herói
+    private static final int HERO_FEET = 58;                 // linha dos pés dentro do quadro
+    private static final int HERO_CENTER_X = 29;             // centro do corpo dentro do quadro
 
     // estados da tela
     private static final int TITLE = 0, ASK_SKIP = 1, MESSAGE = 2, MENU = 3, END = 4, WORLD = 5;
@@ -110,6 +113,7 @@ public class GameView extends View {
     private String titleNotice = null;
     private long titleNoticeUntil = 0;
     private final Map<Especie, Bitmap> bmpEspecies = new HashMap<Especie, Bitmap>();
+    private final Map<Especie, Bitmap> bmpBrancos = new HashMap<Especie, Bitmap>();
     private final Map<Npc, Bitmap> bmpNpcs = new HashMap<Npc, Bitmap>();
 
     // jogo
@@ -710,11 +714,27 @@ public class GameView extends View {
         postInvalidateDelayed(33);
     }
 
+    private Bitmap carregar(String nome) {
+        BitmapFactory.Options opts = new BitmapFactory.Options();
+        opts.inScaled = false;
+        int id = getResources().getIdentifier(nome, "drawable", getContext().getPackageName());
+        return BitmapFactory.decodeResource(getResources(), id, opts);
+    }
+
     private Bitmap bitmapDe(Especie e) {
         Bitmap b = bmpEspecies.get(e);
         if (b == null) {
-            b = Sprites.deEspecie(e);
+            b = carregar(e.spriteRes);
             bmpEspecies.put(e, b);
+        }
+        return b;
+    }
+
+    private Bitmap brancoDe(Especie e) {
+        Bitmap b = bmpBrancos.get(e);
+        if (b == null) {
+            b = Sprites.branco(bitmapDe(e));
+            bmpBrancos.put(e, b);
         }
         return b;
     }
@@ -722,8 +742,7 @@ public class GameView extends View {
     private Bitmap bitmapDe(Npc n) {
         Bitmap b = bmpNpcs.get(n);
         if (b == null) {
-            int[] cabelos = {0xFF5A3A1A, 0xFF2A2A2A, 0xFFB0B0B0, 0xFFC8A040};
-            b = Sprites.npc(n.cor, cabelos[(n.x + n.y) % cabelos.length]);
+            b = carregar("npc_" + n.sprite);
             bmpNpcs.put(n, b);
         }
         return b;
@@ -758,7 +777,9 @@ public class GameView extends View {
 
         for (Npc n : world.npcs) {
             if (n.x < tx0 - 1 || n.x > tx1 + 1 || n.y < ty0 - 1 || n.y > ty1 + 1) continue;
-            c.drawBitmap(bitmapDe(n), n.x * TILE - camX, n.y * TILE - camY, null);
+            Bitmap nb = bitmapDe(n);
+            c.drawBitmap(nb, n.x * TILE - camX - (nb.getWidth() - TILE) / 2f,
+                    n.y * TILE - camY - (nb.getHeight() - TILE), null);
         }
 
         for (Inimigo m : world.inimigos) {
@@ -766,7 +787,9 @@ public class GameView extends View {
             float py = m.py(now);
             if (px < camX - TILE || px > camX + WORLD_W || py < camY - TILE || py > camY + WORLD_H) continue;
             int bob = (((now / 350L) + m.id) % 2L == 0L) ? 0 : -2;
-            c.drawBitmap(bitmapDe(m.especie), px - camX, py - camY + bob, null);
+            Bitmap mb = bitmapDe(m.especie);
+            c.drawBitmap(mb, px - camX - (mb.getWidth() - TILE) / 2f,
+                    py - camY - (mb.getHeight() - TILE) + bob, null);
         }
 
         // herói (pisca enquanto está invulnerável depois de fugir)
@@ -775,8 +798,8 @@ public class GameView extends View {
             int passo = 0;
             if (heroMoving) passo = (((now - heroMoveStart) / 105L) % 2L == 0L) ? -2 : 0;
             c.drawBitmap(heroFrames[FRAME_DIR[heroFacing]],
-                    hpx - camX - (HERO_W - TILE) / 2f,
-                    hpy - camY - (HERO_H - TILE) + passo, null);
+                    hpx - camX + TILE / 2f - HERO_CENTER_X,
+                    hpy - camY + TILE - HERO_FEET + passo, null);
         }
 
         c.restore();
@@ -972,20 +995,14 @@ public class GameView extends View {
 
         boolean white = flashing && ((now / 70) % 2 == 0);
         int bob = alive ? (int) Math.round(Math.sin(now / 350.0) * 2.0) : 0;
-        float x0 = 112f;
-        float y0 = 6f + bob;
-        float cell = 6f;
 
-        for (int r = 0; r < esp.sprite.length; r++) {
-            String row = esp.sprite[r];
-            for (int col = 0; col < row.length(); col++) {
-                char ch = row.charAt(col);
-                if (ch == '.') continue;
-                fill.setColor(white ? Color.WHITE : esp.cor(ch));
-                c.drawRect(x0 + col * cell, y0 + r * cell,
-                        x0 + (col + 1) * cell, y0 + (r + 1) * cell, fill);
-            }
-        }
+        Bitmap bmp = white ? brancoDe(esp) : bitmapDe(esp);
+        int k = Math.max(1, 96 / Math.max(bmp.getWidth(), bmp.getHeight())); // aumento inteiro
+        int w = bmp.getWidth() * k;
+        int h = bmp.getHeight() * k;
+        int x0 = (int) ((W - w) / 2f);
+        int y0 = 102 - h + bob;
+        c.drawBitmap(bmp, null, new Rect(x0, y0, x0 + w, y0 + h), null);
 
         if (alive) {
             fill.setColor(0xFF444444);

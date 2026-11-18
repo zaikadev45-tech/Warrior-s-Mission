@@ -10,8 +10,8 @@ android {
         applicationId "com.zaikadev.warriorsmission"
         minSdk 19        // Android 4.4 em diante (roda também no Android 10)
         targetSdk 29     // Android 10
-        versionCode 5
-        versionName "1.0.0"
+        versionCode 6
+        versionName "1.1.0"
     }
 
     buildTypes {

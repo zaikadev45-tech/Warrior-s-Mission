@@ -4,15 +4,15 @@ package com.zaikadev.warriorsmission;
 public class Npc {
     public final int x, y;
     public final String nome;
-    public final int cor;        // cor da roupa
+    public final String sprite;  // imagem: res/drawable-nodpi/npc_<sprite>.png
     public final boolean cura;   // se true, restaura HP e MP do herói
     public final String[] falas;
 
-    public Npc(int x, int y, String nome, int cor, boolean cura, String... falas) {
+    public Npc(int x, int y, String nome, String sprite, boolean cura, String... falas) {
         this.x = x;
         this.y = y;
         this.nome = nome;
-        this.cor = cor;
+        this.sprite = sprite;
         this.cura = cura;
         this.falas = falas;
     }
